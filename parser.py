@@ -62,13 +62,62 @@ def get_restaurant_address(driver):
         return response
     
 
-def provide_location(driver, street: str, number=None):
+def provide_location(driver, street: str, number: str):
     try:
         input_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, '//input[@aria-label="Ort suchen"]'))
         )
+        print("found locaton input element")
+        
+        if input_element:
+            location = street
+            
+            if number:
+                location += f" {number}"
+
+            input_element.send_keys(location) 
+            time.sleep(1)   
+            li_location_option = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.XPATH, '//li[@role="option"]'))
+            )
+
+            if li_location_option:
+                li_location_option.click()
+                print("Clicked location suggestion")
+                
+                input_house_number = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.XPATH, '//input[@placeholder="Enter building number or name"]'))
+                )
+
+                if input_house_number:
+                    # "1" as fallback value that will 100% exist (real address)
+                    input_house_number.send_keys(number if number else "1")
+                    button_confirm = WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.XPATH, '//button[@data-qa="location-panel-street-number"]'))
+                    )
+
+                    if button_confirm:
+                        button_confirm.click()
+                        print("Clicked confirm address button")
+                        time.sleep(1)
+                    else:
+                        button_confirm_disabled = WebDriverWait(driver, 5).until(
+                            EC.presence_of_element_located((By.XPATH, '//button[@data-qa="location-panel-street-number-disabled"]'))
+                        )
+                        if button_confirm_disabled:
+                            print("Error: 'Confirm address' button is disabled.")
+                        else:
+                            print("Unexpected error occured when clicking confirm button")
+                else:
+                    print("House number input either wasn't required or failed to appear")
+
+            else:
+                print("Failed to find and click location suggestion <li> element")
+
+        else:
+            print("Failed to locate location input element")
     except Exception as e:
-        print(f"Failed to close location modal: {e}")
+        print(f"Unexpected error when providing location: {e}")
 
 
 def main():
@@ -86,8 +135,13 @@ def main():
         time.sleep(5)
         accept_cookies(driver)
         addr = get_restaurant_address(driver)
+        print("Got the address!")
         print(addr)
-        #close_location_modal(driver)
+        
+        if not addr["error"]:
+            provide_location(driver, addr["street"], addr["number"])
+        else:
+            print("Error trying to obtain restaurant address. Closing driver...")
 
         '''page_sections = driver.find_elements(By.XPATH, '//section[@data-qa="item-category"]')
         section_headings = []
