@@ -16,6 +16,7 @@ import time
 url = "https://www.lieferando.de/speisekarte/gastrooma-mnchen?utm_campaign=foodorder&utm_medium=organic&utm_source=google&shipping=delivery&rwg_token=AJKvS9X6iWbr8a6ECZAx_sfRF8_JtHQWAbX8HYfKbuGk7G-IMB3SyPoZ5aPRsMZHYGXanDfa4iWezXLUTldufH2BSRDxanOecA%3D%3D"
 
 
+
 def accept_cookies(driver):
     try:
         cookie_banner = driver.find_element(By.TAG_NAME, 'pie-cookie-banner')
@@ -25,6 +26,7 @@ def accept_cookies(driver):
         print("Accepted necessary cookies")
     except Exception as e:
         print(f"Failed to accept necessary cookies: {e}")
+
 
 
 def get_restaurant_address(driver):
@@ -61,6 +63,7 @@ def get_restaurant_address(driver):
     finally:
         return response
     
+
 
 def provide_location(driver, street: str, number: str):
     try:
@@ -120,6 +123,24 @@ def provide_location(driver, street: str, number: str):
         print(f"Unexpected error when providing location: {e}")
 
 
+
+def trigger_location_popup(driver):
+    try:
+        section_food_1 = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, '//section[@data-qa="item-category"]'))
+        )
+        print("Found 1st food section")
+        div_food_1 = section_food_1.find_element(By.XPATH, './/div[@role="button"]')
+        print("Found 1st food item in section")
+        div_food_1.click()
+        print("Click 1st food item in section")
+        time.sleep(2)
+
+    except Exception as e:
+        print("Unexpected error when triggering lcoation popup to appear")
+
+
+
 def main():
     try:
         #request = Request(url=url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -134,14 +155,15 @@ def main():
         driver.get(url)
         time.sleep(5)
         accept_cookies(driver)
-        addr = get_restaurant_address(driver)
-        print("Got the address!")
-        print(addr)
         
+        addr = get_restaurant_address(driver)
         if not addr["error"]:
+            print(f"Got the address! \nStreet: {addr["street"]} House number: {addr["number"]}")
+            trigger_location_popup(driver)
             provide_location(driver, addr["street"], addr["number"])
         else:
             print("Error trying to obtain restaurant address. Closing driver...")
+        
 
         '''page_sections = driver.find_elements(By.XPATH, '//section[@data-qa="item-category"]')
         section_headings = []
@@ -167,8 +189,8 @@ def main():
                         print(f"Failed to click button: {e}")
             index += 1
         print(section_headings)'''
-        driver.quit()
-
+        driver.close()
+    
         '''list_item = soup.find('li', {'data-item-id': "929076143"})
         if list_item:
             
