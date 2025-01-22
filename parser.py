@@ -14,7 +14,7 @@ import time
 
 
 url = "https://www.lieferando.de/speisekarte/gastrooma-mnchen?utm_campaign=foodorder&utm_medium=organic&utm_source=google&shipping=delivery&rwg_token=AJKvS9X6iWbr8a6ECZAx_sfRF8_JtHQWAbX8HYfKbuGk7G-IMB3SyPoZ5aPRsMZHYGXanDfa4iWezXLUTldufH2BSRDxanOecA%3D%3D"
-
+#url = "https://www.lieferando.de/speisekarte/dodo-pizza-1"
 
 
 def accept_cookies(driver):
@@ -124,21 +124,87 @@ def provide_location(driver, street: str, number: str):
 
 
 
-def trigger_location_popup(driver):
+# Finds and clicks 1st food item in 1st food category to trigger Lieferando's location modal
+# Afterwards location is bypassed with provide_location() above
+def handle_location_popup(driver, street, number):
     try:
         section_food_1 = WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.XPATH, '//section[@data-qa="item-category"]'))
         )
-        print("Found 1st food section")
+        print("Triggering location popup: found 1st food section")
         div_food_1 = section_food_1.find_element(By.XPATH, './/div[@role="button"]')
-        print("Found 1st food item in section")
+        print("Triggering location popup: found 1st food item in section")
         div_food_1.click()
-        print("Click 1st food item in section")
-        time.sleep(2)
+        print("Triggering location popup: clicked food item")
+        time.sleep(1)
+
+        provide_location(driver, street, number)
+        
+        # now need to close opened item card
+        close_food_item_button = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
+        )
+        print("found 'close' button on 1st food item")
+        close_food_item_button.click()
+        print("pressed 'close' button on 1st food item")
 
     except Exception as e:
-        print("Unexpected error when triggering lcoation popup to appear")
+        print(f"Unexpected error when triggering location popup to appear: {e}")
 
+
+
+
+def extract_data(driver):
+    extracted_data = {}
+    food_sections = driver.find_elements(By.XPATH, '//section[@data-qa="item-category"]')
+    index = 0
+
+    for section in food_sections:
+        section_items_list = []
+        
+        if index == 0:
+            h2_food_section= section.find_element(By.XPATH, './/div//h2[@data-qa="heading"]')
+            
+            if h2_food_section:
+                h2_food_section_text = h2_food_section.text
+                print(f"Found food section name: '{h2_food_section_text}'")
+
+                '''# line below prevents errors and narrows down the search
+                div_list_wrapper = section.find_element(By.XPATH, './/div[@data-qa="item-category-list"]')
+                print("food items wrapper found")'''
+                
+                # <li> items aren't clickable but their deep indirect children divs are
+                
+                #divs_food_item_buttons = div_list_wrapper.find_elements(By.XPATH, './/li[@data-item-id]//div[@role="button"]')
+                divs_food_item_buttons = section.find_elements(By.XPATH, './/div[@role="button"]')
+                print("Found all clickable food item button divs")
+
+                # going through every food item
+                for button in divs_food_item_buttons:
+                    try:
+                        #button.click()
+                        print("food item div was clicked")
+                        
+                        # testing heading extraction
+                        h2_food_name = WebDriverWait(driver, 5).until(
+                            EC.visibility_of_element_located((By.XPATH, './/h2[@data-qa="heading"]'))
+                        )
+                        h2_food_name_text = h2_food_name.text
+                        print(f"Obtained food name: {h2_food_name_text}")
+                        
+                        # close food item (acts as real user)
+                        close_food_item_button = WebDriverWait(driver, 5).until(
+                            EC.visibility_of_element_located((By.XPATH, './/span[@role="button"]'))
+                        )
+                        close_food_item_button.click()
+                        print("Closed food item successfully.")
+                        time.sleep(0.5)
+
+                    except Exception as e:
+                        print(f"Failed to click button: {e}")
+            else:
+                print("Failed to find food section name")
+        index += 1
 
 
 def main():
@@ -159,37 +225,15 @@ def main():
         addr = get_restaurant_address(driver)
         if not addr["error"]:
             print(f"Got the address! \nStreet: {addr["street"]} House number: {addr["number"]}")
-            trigger_location_popup(driver)
-            provide_location(driver, addr["street"], addr["number"])
+            handle_location_popup(driver, addr["street"], addr["number"])
+            print("Started data extraction...")
+            extract_data(driver)
         else:
             print("Error trying to obtain restaurant address. Closing driver...")
         
 
-        '''page_sections = driver.find_elements(By.XPATH, '//section[@data-qa="item-category"]')
-        section_headings = []
-        index = 0
-        time.sleep(5)
-        for section in page_sections:
-            if index == 0:
-                # section name
-                h2_section_name = section.find_element(By.XPATH, './/div//h2[@data-qa="heading"]')
-                section_headings.append(h2_section_name.text)
-                # interactive divs
-                div_interactive_items = section.find_elements(By.XPATH, './/div[@role="button"]')
-                for div in div_interactive_items:
-                    try:
-                        div.click()
-                        print("div was clicked")
-                        time.sleep(1)  # Optional: sleep to allow for any loading after click
-                        close_button = div.find_element(By.XPATH, './/span[@role="button"]')
-                        close_button.click()  # Click the close button
-                        print("Closed content successfully.")
-
-                    except Exception as e:
-                        print(f"Failed to click button: {e}")
-            index += 1
-        print(section_headings)'''
-        driver.close()
+        driver.close() # closes the tab opened by driver
+        driver.quit() # quits driver completely
     
         '''list_item = soup.find('li', {'data-item-id': "929076143"})
         if list_item:
