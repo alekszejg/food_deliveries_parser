@@ -154,7 +154,7 @@ def handle_location_popup(driver, street, number):
 
 
 # function that extracts data from single food item 
-def extract_food_item_data(driver, item, category_name):
+def extract_food_item_data(driver, category_name):
     response = {
         "category": category_name, 
         "title": "", 
@@ -164,39 +164,87 @@ def extract_food_item_data(driver, item, category_name):
         "img_url": ""
     }
     try:
-        item.click()
-        
         # extracting food item name
-        h2_food_name = WebDriverWait(driver, 5).until(
+        '''
+        h2_food_name = WebDriverWait(driver, 10).until(
             EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//h2[@data-qa="heading"]'))
         )
         response["title"] = h2_food_name.text
+        '''
         
         # extracting general food details 
-        div_food_details = WebDriverWait(driver, 5).until(
-            EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//div[@data-qa="text"]'))
+        try:
+            div_food_details = WebDriverWait(driver, 10).until(
+                EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//div[@data-qa="text"]'))
+            )
+            response["details"] = div_food_details.text
+        except:
+            print("Description wasn't provided")
+        print("encountered no error after product details")
+
+        try:
+            # find out if food item has multiple order options (potion sizes)
+            span_product_info_button = WebDriverWait(driver, 5).until(
+                EC.visibility_of_element_located((By.XPATH, '//fieldset//span[@role="button"][text()="Produktinfo"]'))
+            )
+            print("FIELDSET FOUND")
+            span_product_info_button.click()
+            print("PRODUCT INFO BUTTON CLICKED")
+        except:
+            # fieldset doesn't exist. Only one order option
+            print("FIELDSET NOT FOUND")
+            span_product_info_button = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"][text()="Produktinfo"]'))
+            )
+            span_product_info_button.click()
+            print("PRODUCT INFO BUTTON CLICKED")
+        
+        # check if allergen info exists by checking if its header exists
+        try:
+            h6_allergens = WebDriverWait(driver, 10).until(
+                EC.visibility_of_element_located((By.XPATH, '//h6[text()="Allergens"]'))
+            )
+
+            ul_allergens = WebDriverWait(driver, 10).until(
+                EC.visibility_of_element_located((By.XPATH, '//ul[@data-qa="util"]'))
+            )
+            li_allergen_items = ul_allergens.find_elements(By.XPATH, './li')
+            
+            allergen_info = ""
+            for li in li_allergen_items:
+                allergen_info += li.text + " "
+            
+            response["product_info"] = allergen_info.rstrip()
+        except:
+            # basically <h6> doesn't exist. Not outputing it into console to avoid mess
+            pass
+        finally:
+            span_go_back_button = WebDriverWait(driver, 10).until(
+                EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="product-info-header"]//span[@role="button"]'))
+            )
+            span_go_back_button.click()
+            
+        # extracting food item price
+        span_price = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//span[@data-qa="text"]//span'))
         )
-        response["details"] = div_food_details.text  
+        response["price"] = span_price.text
 
         # extracting food item image src
-        img = WebDriverWait(driver, 5).until(
+        img = WebDriverWait(driver, 10).until(
             EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//img'))
         )
         response["img_url"] = img.get_attribute("src")
         
         # close food item (acts as real user)
-        close_food_item_button = WebDriverWait(driver, 5).until(
+        close_food_item_button = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
         )
         close_food_item_button.click()
-        print("Closed food item successfully.")
-        time.sleep(0.5)
-        print("\n")
-        print(response)
-        print("\n")
-
+        return response
+    
     except Exception as e:
-        print(f"Unexpected error when extracting data from a list item: {e}")
+        print(f"Unexpected error when parsing <li>. {e}")
 
 
 
@@ -204,28 +252,30 @@ def extract_food_item_data(driver, item, category_name):
 def handle_data_extraction(driver):
     extracted_data = []
     food_sections = driver.find_elements(By.XPATH, '//section[@data-qa="item-category"]')
-    index = 0
-
+    
     for section in food_sections:
-
-        if index == 0:
-            h2_food_section= section.find_element(By.XPATH, './/div//h2[@data-qa="heading"]')
+        h2_food_section= section.find_element(By.XPATH, './/div//h2[@data-qa="heading"]')
+        
+        if h2_food_section:
+            food_category = h2_food_section.text
+            print(f"Food section: '{food_category}'\n")
             
-            if h2_food_section:
-                food_category = h2_food_section.text
-                print(f"Found food category name: '{food_category}'")
-                
-                # <li> items aren't clickable but their deep indirect children divs are
-                clickable_food_items = section.find_elements(By.XPATH, './/div[@role="button"]')
-                print("Found all clickable food item button divs")
-
-                # going through every food item
-                for item in clickable_food_items:
-                    extract_food_item_data(driver, item, food_category)
-
-            else:
-                print("Failed to find food section name")
-        index += 1
+            # <li> items aren't clickable but their deep indirect children divs are
+            
+            clickable_food_items = section.find_elements(By.XPATH, './/div[@role="button"]')
+    
+            # going through every food item
+            for item in clickable_food_items:
+                item.click()
+                print("Item was clicked")
+                data = extract_food_item_data(driver, food_category)
+                if food_category == "Schkwarky":
+                    print(f"DATA FOR FALSY CATEGORY IS {data}")
+                extracted_data.append(data)
+                print(f"{data["title"]} was parsed")
+        else:
+            print("Failed to find food section name")
+    print(extracted_data)
 
 
 def main():
@@ -256,31 +306,6 @@ def main():
         driver.close() # closes the tab opened by driver
         driver.quit() # quits driver completely
     
-        '''list_item = soup.find('li', {'data-item-id': "929076143"})
-        if list_item:
-            
-            # finding title
-            h2_element = list_item.find('h2') 
-            if h2_element:
-                print(f"Title DE: {h2_element.text}")
-            else:
-                print("No <h2> element found inside this <li> element.") 
-            
-            # finding details
-            details_div = list_item.find('div', {'data-qa': 'text'})
-            if details_div:
-                print(f"Product Details DE: {details_div.text}")
-            else:
-                print("No <div> element with attribute 'data-qa' found inside this <li> element")
-            
-            # Use Playwright to click the button and extract the product info dynamically
-            with sync_playwright() as playwright:
-                run(playwright=playwright, url=url)
-                
-        else:
-            print("No <li> element found")'''
-        
-
     except Exception as e:
         print(f"An error has occured: {e}")
 
