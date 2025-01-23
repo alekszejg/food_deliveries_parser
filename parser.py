@@ -154,16 +154,35 @@ def handle_location_popup(driver, street, number):
 
 
 # function that extracts data from single food item 
-def extract_food_item_data(driver, item):
+def extract_food_item_data(driver, item, category_name):
+    response = {
+        "category": category_name, 
+        "title": "", 
+        "details": "", 
+        "product_info": "",
+        "price": "",
+        "img_url": ""
+    }
     try:
         item.click()
         
-        # attempting to extract food item name correctly
+        # extracting food item name
         h2_food_name = WebDriverWait(driver, 5).until(
             EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//h2[@data-qa="heading"]'))
         )
-        h2_food_name_text = h2_food_name.text
-        print(f"Obtained food name: {h2_food_name_text}")
+        response["title"] = h2_food_name.text
+        
+        # extracting general food details 
+        div_food_details = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//div[@data-qa="text"]'))
+        )
+        response["details"] = div_food_details.text  
+
+        # extracting food item image src
+        img = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//img'))
+        )
+        response["img_url"] = img.get_attribute("src")
         
         # close food item (acts as real user)
         close_food_item_button = WebDriverWait(driver, 5).until(
@@ -172,6 +191,9 @@ def extract_food_item_data(driver, item):
         close_food_item_button.click()
         print("Closed food item successfully.")
         time.sleep(0.5)
+        print("\n")
+        print(response)
+        print("\n")
 
     except Exception as e:
         print(f"Unexpected error when extracting data from a list item: {e}")
@@ -180,24 +202,18 @@ def extract_food_item_data(driver, item):
 
 # main function for handling data extraction
 def handle_data_extraction(driver):
-    extracted_data = {}
+    extracted_data = []
     food_sections = driver.find_elements(By.XPATH, '//section[@data-qa="item-category"]')
     index = 0
 
     for section in food_sections:
-        section_item_list = []
-        
+
         if index == 0:
             h2_food_section= section.find_element(By.XPATH, './/div//h2[@data-qa="heading"]')
             
             if h2_food_section:
-                h2_food_section_text = h2_food_section.text
-                print(f"Found food section name: '{h2_food_section_text}'")
-                
-                
-                # place line below at end of each iteration when item list is done
-                #extracted_data[h2_food_section_text] = section_item_list 
-                
+                food_category = h2_food_section.text
+                print(f"Found food category name: '{food_category}'")
                 
                 # <li> items aren't clickable but their deep indirect children divs are
                 clickable_food_items = section.find_elements(By.XPATH, './/div[@role="button"]')
@@ -205,7 +221,7 @@ def handle_data_extraction(driver):
 
                 # going through every food item
                 for item in clickable_food_items:
-                    extract_food_item_data(driver, item)
+                    extract_food_item_data(driver, item, food_category)
 
             else:
                 print("Failed to find food section name")
