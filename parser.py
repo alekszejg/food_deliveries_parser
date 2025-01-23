@@ -57,10 +57,9 @@ def accept_cookies(driver):
 
 
 def get_restaurant_address(driver):
-    response = {"street": "", "number": ""}
     try: 
-        script_element = driver.find_element(By.CSS_SELECTOR, 'script[type="application/ld+json"]')
-        json_data = script_element.get_attribute("innerHTML")
+        script = driver.find_element(By.CSS_SELECTOR, 'script[type="application/ld+json"]')
+        json_data = script.get_attribute("innerHTML")
         data = json.loads(json_data)
         address = data.get("address", {}).get("streetAddress", {})
         
@@ -86,70 +85,53 @@ def get_restaurant_address(driver):
         return (clean_address, street_number)
             
     except Exception as e:
-        print(f"! Unexpected Error when extracting restaurant's address. {e}")
+        print(f"! Unexpected Error during restaurant's address extraction. {e}")
         cleanup_driver(driver, exit=True)
     
     
-def provide_loc(driver, street: str, number: str):
+def fill_loc_prompt(driver, street, number):
     try:
-        input_element = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, '//input[@aria-label="Ort suchen"]'))
+        street_input = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, 'input[aria-label="Ort suchen"]'))
         )
-        print("found locaton input element")
-        
-        if input_element:
-            location = street
-            
-            if number:
-                location += f" {number}"
-
-            input_element.send_keys(location) 
-            time.sleep(1)   
-            li_location_option = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.XPATH, '//li[@role="option"]'))
-            )
-
-            if li_location_option:
-                li_location_option.click()
-                print("Clicked location suggestion")
-                
-                input_house_number = WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, '//input[@placeholder="Enter building number or name"]'))
-                )
-
-                if input_house_number:
-                    # "1" as fallback value that will 100% exist (real address)
-                    input_house_number.send_keys(number if number else "1")
-                    button_confirm = WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((By.XPATH, '//button[@data-qa="location-panel-street-number"]'))
-                    )
-
-                    if button_confirm:
-                        button_confirm.click()
-                        print("Clicked confirm address button")
-                        time.sleep(1)
-                    else:
-                        button_confirm_disabled = WebDriverWait(driver, 5).until(
-                            EC.presence_of_element_located((By.XPATH, '//button[@data-qa="location-panel-street-number-disabled"]'))
-                        )
-                        if button_confirm_disabled:
-                            print("Error: 'Confirm address' button is disabled.")
-                        else:
-                            print("Unexpected error occured when clicking confirm button")
-                else:
-                    print("House number input either wasn't required or failed to appear")
-
-            else:
-                print("Failed to find and click location suggestion <li> element")
-
-        else:
-            print("Failed to locate location input element")
+        my_loc = f"{street} {number or ''}".strip()
+        street_input.send_keys(my_loc)
     except Exception as e:
-        print(f"Unexpected error when providing location: {e}")
+        print(f"! Unexpected Error when accessing location <input> element. {e}")
+        cleanup_driver(driver, exit=True)
+    
+    try:
+        address_suggestion = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, 'li[role="option"]'))
+        )
+        address_suggestion.click()
+    except Exception as e:
+        print(f"Unexpected Error when accessing or interacting with address suggestion. {e}")
+        cleanup_driver(driver, exit=True)
 
+    street_num_input = None
+    try:
+        street_num_input = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, 'input[placeholder="Enter building number or name"]'))
+        )
+        street_num_input.send_keys(number if number else "1") # 1 as fallback
+    except:
+        print("Street number prompt didn't appear. Likely no error")
+        return
+    
+    if street_num_input:
+        try:
+            confirm_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-qa="location-panel-street-number"]'))
+            )
+            confirm_button.click()
+        except Exception as e:
+            print(f"Unexpected Error when accessing or interacting with 'Confirm Address' button. {e}")
+            cleanup_driver(driver, exit=True)
+    
+    
 
-
-def handle_loc_popup(driver, street, number):
+def handle_loc_prompt(driver, street, number):
     # Triggers Lieferando's location prompt to appear by clicking 1st menu item
     try:
         food_section_1 = driver.find_element(By.CSS_SELECTOR, 'section[data-qa="item-category"]')
@@ -159,15 +141,20 @@ def handle_loc_popup(driver, street, number):
         print(f"! Unexpected Error when triggering location popup to appear: {e}")
         cleanup_driver(driver, exit=True)
     
-    provide_loc(driver, street, number)
+    # Prompt should have appeared. Filling in the data...
+    fill_loc_prompt(driver, street, number)
 
-    # now need to close opened item card
-    close_food_item_button = WebDriverWait(driver, 5).until(
-        EC.element_to_be_clickable((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
-    )
-    print("found 'close' button on 1st food item")
-    close_food_item_button.click()
-    print("pressed 'close' button on 1st food item")
+    # close food item card
+    try:
+        close_button = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
+        )
+        close_button.click()
+    except Exception as e:
+        print(f"Unexpected Error during access or interaction with close button of food item. {e}")
+        cleanup_driver(driver, exit=True)
+
+    print("Entered address was accepted. Proceeding with data parsing.")
 
 
 
@@ -292,20 +279,17 @@ url = "https://www.lieferando.de/speisekarte/gastrooma-mnchen?utm_campaign=foodo
 #url = "https://www.lieferando.de/speisekarte/dodo-pizza-1"
 
 def main():
-    try:
-        driver = initialize_driver(url)
-        accept_cookies(driver)
-        street, number = get_restaurant_address(driver)
-        handle_loc_popup(driver, street, number)
-        print("Started data extraction...")
-        handle_data_extraction(driver)
-        
-        cleanup_driver(driver)
+    driver = initialize_driver(url)
+    accept_cookies(driver)
     
-    except Exception as e:
-        print(f"An error has occured: {e}")
-    finally:
-        cleanup_driver(driver, exit=True)
+    street, number = get_restaurant_address(driver)
+    handle_loc_prompt(driver, street, number)
+    
+    handle_data_extraction(driver)
+    
+    cleanup_driver(driver)
+    
+    
 
 if __name__ == "__main__":
     main()
