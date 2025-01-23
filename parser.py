@@ -12,60 +12,85 @@ from selenium.webdriver.common.keys import Keys
 import time
 
 
+def cleanup_driver(driver, exit=False):
+    try:
+        driver.close()  # Close the browser tab
+        driver.quit()   # Quit the browser entirely  
+        print("Driver successfully cleaned up.")
+    except Exception as e:
+        print(f"Error during driver cleanup: {e}")
+    finally:
+        if exit:
+            exit()
 
-url = "https://www.lieferando.de/speisekarte/gastrooma-mnchen?utm_campaign=foodorder&utm_medium=organic&utm_source=google&shipping=delivery&rwg_token=AJKvS9X6iWbr8a6ECZAx_sfRF8_JtHQWAbX8HYfKbuGk7G-IMB3SyPoZ5aPRsMZHYGXanDfa4iWezXLUTldufH2BSRDxanOecA%3D%3D"
-#url = "https://www.lieferando.de/speisekarte/dodo-pizza-1"
+
+def initialize_driver(url):
+    driver = None
+    try:
+        options = uc.ChromeOptions()
+        options.add_experimental_option("prefs", {
+            "profile.default_content_setting_values.geolocation": 2  # Block geolocation requests
+        })
+        driver = uc.Chrome(use_subprocess=False, headless=False, options=options)
+        driver.get(url)
+        print("Initialized driver and accessed url.")
+        return driver
+    except Exception as e:
+        print("! Error during driver initialization. {e}")
+        if driver:
+            cleanup_driver(driver, exit=True)
+        
 
 
 def accept_cookies(driver):
     try:
-        cookie_banner = driver.find_element(By.TAG_NAME, 'pie-cookie-banner')
+        cookie_banner = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.TAG_NAME, 'pie-cookie-banner'))
+        )
         shadow_root = driver.execute_script('return arguments[0].shadowRoot', cookie_banner)
-        accept_cookies_button = shadow_root.find_element(By.CSS_SELECTOR, 'pie-button[data-test-id="actions-necessary-only"]')
-        accept_cookies_button.click()
-        print("Accepted necessary cookies")
+        accept_cookies_btn = shadow_root.find_element(By.CSS_SELECTOR, 'pie-button[data-test-id="actions-necessary-only"]')
+        accept_cookies_btn.click()
+        print("Accepted necessary cookies.")
     except Exception as e:
-        print(f"Failed to accept necessary cookies: {e}")
-
+        print(f"! Error during cookies accept. {e}")
+        cleanup_driver(driver, exit=True)
 
 
 def get_restaurant_address(driver):
-    response = {"street": "", "number": "", "error": False}
+    response = {"street": "", "number": ""}
     try: 
-        data_script = driver.find_element(By.XPATH, '//script[@type="application/ld+json"]')
-        json_data = data_script.get_attribute("innerHTML")
+        script_element = driver.find_element(By.CSS_SELECTOR, 'script[type="application/ld+json"]')
+        json_data = script_element.get_attribute("innerHTML")
         data = json.loads(json_data)
-        street_address = data.get("address", {}).get("streetAddress", {})
+        address = data.get("address", {}).get("streetAddress", {})
         
-        if not street_address:
-            response["error"] = True
-            return response
+        if not address:
+            print("! Error: address wasn't provided by restaurant")
+            cleanup_driver(driver, exit=True)
         
-        # Avoids extra information that could be given after symbols , . (
-        regex_match = re.match(r'^[^,(.]+', street_address)
-        if not regex_match:
-            response["error"] = True
-            return response
-        
-        clean_street_address = regex_match.group(0).strip()
-        response["street"] = clean_street_address
+        # Avoids extra information after symbols ,.(
+        regex_match1 = re.match(r'^[^,(.]+', address.strip())
+        if not regex_match1:
+            print("! Unexpected Error in regex during address cleanup")
+            cleanup_driver(driver, exit=True)
+            
+        clean_address = regex_match1.group(0).strip()
+        street_number = None
 
-        # finding house number
-        regex_match2 = re.search(r'\b\d+[a-zA-Z]?\b', clean_street_address)
+        # check for street number
+        regex_match2 = re.search(r'\b\d+[a-zA-Z]?\b', clean_address)
         if regex_match2:
             street_number = regex_match2.group()
-            response["number"] = street_number
 
+        print(f"Obtained restaurant's address. Street: {clean_address}, number: {street_number}")
+        return (clean_address, street_number)
+            
     except Exception as e:
-        print(f"Failed to extract street address: {e}")
-        response["error"] = True
+        print(f"! Unexpected Error when extracting restaurant's address. {e}")
+        cleanup_driver(driver, exit=True)
     
-    finally:
-        return response
     
-
-
-def provide_location(driver, street: str, number: str):
+def provide_loc(driver, street: str, number: str):
     try:
         input_element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, '//input[@aria-label="Ort suchen"]'))
@@ -124,53 +149,41 @@ def provide_location(driver, street: str, number: str):
 
 
 
-# Finds and clicks 1st food item in 1st food category to trigger Lieferando's location modal
-# Afterwards location is bypassed with provide_location() above
-def handle_location_popup(driver, street, number):
+def handle_loc_popup(driver, street, number):
+    # Triggers Lieferando's location prompt to appear by clicking 1st menu item
     try:
-        section_food_1 = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.XPATH, '//section[@data-qa="item-category"]'))
-        )
-        print("Triggering location popup: found 1st food section")
-        div_food_1 = section_food_1.find_element(By.XPATH, './/div[@role="button"]')
-        print("Triggering location popup: found 1st food item in section")
-        div_food_1.click()
-        print("Triggering location popup: clicked food item")
-        time.sleep(1)
-
-        provide_location(driver, street, number)
-        
-        # now need to close opened item card
-        close_food_item_button = WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
-        )
-        print("found 'close' button on 1st food item")
-        close_food_item_button.click()
-        print("pressed 'close' button on 1st food item")
-
+        food_section_1 = driver.find_element(By.CSS_SELECTOR, 'section[data-qa="item-category"]')
+        clickable_food_div = food_section_1.find_element(By.XPATH, './/div[@role="button"]')
+        clickable_food_div.click()
     except Exception as e:
-        print(f"Unexpected error when triggering location popup to appear: {e}")
+        print(f"! Unexpected Error when triggering location popup to appear: {e}")
+        cleanup_driver(driver, exit=True)
+    
+    provide_loc(driver, street, number)
+
+    # now need to close opened item card
+    close_food_item_button = WebDriverWait(driver, 5).until(
+        EC.element_to_be_clickable((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
+    )
+    print("found 'close' button on 1st food item")
+    close_food_item_button.click()
+    print("pressed 'close' button on 1st food item")
 
 
 
 # function that extracts data from single food item 
-def extract_food_item_data(driver, category_name):
-    response = {
-        "category": category_name, 
-        "title": "", 
-        "details": "", 
-        "product_info": "",
-        "price": "",
-        "img_url": ""
+def extract_food_item_data(driver, category):
+    response = {"category": category, "title": "", "details": "", 
+        "allergens": "", "price": "", "img_url": ""
     }
+
     try:
         # extracting food item name
-        '''
         h2_food_name = WebDriverWait(driver, 10).until(
             EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//h2[@data-qa="heading"]'))
         )
         response["title"] = h2_food_name.text
-        '''
+
         
         # extracting general food details 
         try:
@@ -261,7 +274,6 @@ def handle_data_extraction(driver):
             print(f"Food section: '{food_category}'\n")
             
             # <li> items aren't clickable but their deep indirect children divs are
-            
             clickable_food_items = section.find_elements(By.XPATH, './/div[@role="button"]')
     
             # going through every food item
@@ -269,8 +281,6 @@ def handle_data_extraction(driver):
                 item.click()
                 print("Item was clicked")
                 data = extract_food_item_data(driver, food_category)
-                if food_category == "Schkwarky":
-                    print(f"DATA FOR FALSY CATEGORY IS {data}")
                 extracted_data.append(data)
                 print(f"{data["title"]} was parsed")
         else:
@@ -278,36 +288,24 @@ def handle_data_extraction(driver):
     print(extracted_data)
 
 
+url = "https://www.lieferando.de/speisekarte/gastrooma-mnchen?utm_campaign=foodorder&utm_medium=organic&utm_source=google&shipping=delivery&rwg_token=AJKvS9X6iWbr8a6ECZAx_sfRF8_JtHQWAbX8HYfKbuGk7G-IMB3SyPoZ5aPRsMZHYGXanDfa4iWezXLUTldufH2BSRDxanOecA%3D%3D"
+#url = "https://www.lieferando.de/speisekarte/dodo-pizza-1"
+
 def main():
     try:
-        #request = Request(url=url, headers={'User-Agent': 'Mozilla/5.0'})
-        #data = urlopen(request).read()
-        #soup = BeautifulSoup(data, "html.parser")
-        
-        options = uc.ChromeOptions()
-        options.add_experimental_option("prefs", {
-            "profile.default_content_setting_values.geolocation": 2  # Block geolocation requests
-        })
-        driver = uc.Chrome(use_subprocess=False, headless=False, options=options)
-        driver.get(url)
-        time.sleep(5)
+        driver = initialize_driver(url)
         accept_cookies(driver)
+        street, number = get_restaurant_address(driver)
+        handle_loc_popup(driver, street, number)
+        print("Started data extraction...")
+        handle_data_extraction(driver)
         
-        addr = get_restaurant_address(driver)
-        if not addr["error"]:
-            print(f"Got the address! \nStreet: {addr["street"]} House number: {addr["number"]}")
-            handle_location_popup(driver, addr["street"], addr["number"])
-            print("Started data extraction...")
-            handle_data_extraction(driver)
-        else:
-            print("Error trying to obtain restaurant address. Closing driver...")
-        
-
-        driver.close() # closes the tab opened by driver
-        driver.quit() # quits driver completely
+        cleanup_driver(driver)
     
     except Exception as e:
         print(f"An error has occured: {e}")
+    finally:
+        cleanup_driver(driver, exit=True)
 
 if __name__ == "__main__":
     main()
