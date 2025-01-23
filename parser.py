@@ -153,14 +153,39 @@ def handle_location_popup(driver, street, number):
 
 
 
+# function that extracts data from single food item 
+def extract_food_item_data(driver, item):
+    try:
+        item.click()
+        
+        # attempting to extract food item name correctly
+        h2_food_name = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//h2[@data-qa="heading"]'))
+        )
+        h2_food_name_text = h2_food_name.text
+        print(f"Obtained food name: {h2_food_name_text}")
+        
+        # close food item (acts as real user)
+        close_food_item_button = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
+        )
+        close_food_item_button.click()
+        print("Closed food item successfully.")
+        time.sleep(0.5)
 
-def extract_data(driver):
+    except Exception as e:
+        print(f"Unexpected error when extracting data from a list item: {e}")
+
+
+
+# main function for handling data extraction
+def handle_data_extraction(driver):
     extracted_data = {}
     food_sections = driver.find_elements(By.XPATH, '//section[@data-qa="item-category"]')
     index = 0
 
     for section in food_sections:
-        section_items_list = []
+        section_item_list = []
         
         if index == 0:
             h2_food_section= section.find_element(By.XPATH, './/div//h2[@data-qa="heading"]')
@@ -168,40 +193,20 @@ def extract_data(driver):
             if h2_food_section:
                 h2_food_section_text = h2_food_section.text
                 print(f"Found food section name: '{h2_food_section_text}'")
-
-                '''# line below prevents errors and narrows down the search
-                div_list_wrapper = section.find_element(By.XPATH, './/div[@data-qa="item-category-list"]')
-                print("food items wrapper found")'''
+                
+                
+                # place line below at end of each iteration when item list is done
+                #extracted_data[h2_food_section_text] = section_item_list 
+                
                 
                 # <li> items aren't clickable but their deep indirect children divs are
-                
-                #divs_food_item_buttons = div_list_wrapper.find_elements(By.XPATH, './/li[@data-item-id]//div[@role="button"]')
-                divs_food_item_buttons = section.find_elements(By.XPATH, './/div[@role="button"]')
+                clickable_food_items = section.find_elements(By.XPATH, './/div[@role="button"]')
                 print("Found all clickable food item button divs")
 
                 # going through every food item
-                for button in divs_food_item_buttons:
-                    try:
-                        #button.click()
-                        print("food item div was clicked")
-                        
-                        # testing heading extraction
-                        h2_food_name = WebDriverWait(driver, 5).until(
-                            EC.visibility_of_element_located((By.XPATH, './/h2[@data-qa="heading"]'))
-                        )
-                        h2_food_name_text = h2_food_name.text
-                        print(f"Obtained food name: {h2_food_name_text}")
-                        
-                        # close food item (acts as real user)
-                        close_food_item_button = WebDriverWait(driver, 5).until(
-                            EC.visibility_of_element_located((By.XPATH, './/span[@role="button"]'))
-                        )
-                        close_food_item_button.click()
-                        print("Closed food item successfully.")
-                        time.sleep(0.5)
+                for item in clickable_food_items:
+                    extract_food_item_data(driver, item)
 
-                    except Exception as e:
-                        print(f"Failed to click button: {e}")
             else:
                 print("Failed to find food section name")
         index += 1
@@ -227,7 +232,7 @@ def main():
             print(f"Got the address! \nStreet: {addr["street"]} House number: {addr["number"]}")
             handle_location_popup(driver, addr["street"], addr["number"])
             print("Started data extraction...")
-            extract_data(driver)
+            handle_data_extraction(driver)
         else:
             print("Error trying to obtain restaurant address. Closing driver...")
         
