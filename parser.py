@@ -12,15 +12,15 @@ from selenium.webdriver.common.keys import Keys
 import time
 
 
-def cleanup_driver(driver, exit=False):
+def cleanup_driver(driver, quit=True):
     try:
         driver.close()  # Close the browser tab
         driver.quit()   # Quit the browser entirely  
         print("Driver successfully cleaned up.")
     except Exception as e:
-        print(f"Error during driver cleanup: {e}")
+        print(f"!!! Error during driver cleanup: {e}")
     finally:
-        if exit:
+        if quit:
             exit()
 
 
@@ -36,24 +36,33 @@ def initialize_driver(url):
         print("Initialized driver and accessed url.")
         return driver
     except Exception as e:
-        print("! Error during driver initialization. {e}")
+        print("!!! Error during driver initialization. {e}")
         if driver:
-            cleanup_driver(driver, exit=True)
+            cleanup_driver(driver)
         
 
 
 def accept_cookies(driver):
+    cookie_banner = None
+    # accessing cookie banner element
     try:
+        # check DOM presence not visibility, since it's shadow DOM
         cookie_banner = WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.TAG_NAME, 'pie-cookie-banner'))
+            EC.presence_of_element_located((By.TAG_NAME, 'pie-cookie-banner'))
         )
+    except: 
+        print(f"!!! Error: cookie banner wasn't found.")
+        cleanup_driver(driver)
+    
+    # accessing accept cookies button through shadow root
+    try:   
         shadow_root = driver.execute_script('return arguments[0].shadowRoot', cookie_banner)
         accept_cookies_btn = shadow_root.find_element(By.CSS_SELECTOR, 'pie-button[data-test-id="actions-necessary-only"]')
         accept_cookies_btn.click()
         print("Accepted necessary cookies.")
     except Exception as e:
-        print(f"! Error during cookies accept. {e}")
-        cleanup_driver(driver, exit=True)
+        print(f"!!! Unexpected Error during when accessing shadow root or its accept cookies button. {e}")
+        cleanup_driver(driver)
 
 
 def get_restaurant_address(driver):
@@ -64,14 +73,14 @@ def get_restaurant_address(driver):
         address = data.get("address", {}).get("streetAddress", {})
         
         if not address:
-            print("! Error: address wasn't provided by restaurant")
-            cleanup_driver(driver, exit=True)
+            print("!!! Error: address wasn't provided by restaurant")
+            cleanup_driver(driver)
         
         # Avoids extra information after symbols ,.(
         regex_match1 = re.match(r'^[^,(.]+', address.strip())
         if not regex_match1:
-            print("! Unexpected Error in regex during address cleanup")
-            cleanup_driver(driver, exit=True)
+            print("!!! Unexpected Error in regex during address cleanup")
+            cleanup_driver(driver)
             
         clean_address = regex_match1.group(0).strip()
         street_number = None
@@ -85,8 +94,8 @@ def get_restaurant_address(driver):
         return (clean_address, street_number)
             
     except Exception as e:
-        print(f"! Unexpected Error during restaurant's address extraction. {e}")
-        cleanup_driver(driver, exit=True)
+        print(f"!!! Unexpected Error during restaurant's address extraction. {e}")
+        cleanup_driver(driver)
     
     
 def fill_loc_prompt(driver, street, number):
@@ -98,7 +107,7 @@ def fill_loc_prompt(driver, street, number):
         street_input.send_keys(my_loc)
     except Exception as e:
         print(f"! Unexpected Error when accessing location <input> element. {e}")
-        cleanup_driver(driver, exit=True)
+        cleanup_driver(driver)
     
     try:
         address_suggestion = WebDriverWait(driver, 5).until(
@@ -106,8 +115,8 @@ def fill_loc_prompt(driver, street, number):
         )
         address_suggestion.click()
     except Exception as e:
-        print(f"Unexpected Error when accessing or interacting with address suggestion. {e}")
-        cleanup_driver(driver, exit=True)
+        print(f"!!! Unexpected Error when accessing or interacting with address suggestion. {e}")
+        cleanup_driver(driver)
 
     street_num_input = None
     try:
@@ -126,8 +135,8 @@ def fill_loc_prompt(driver, street, number):
             )
             confirm_button.click()
         except Exception as e:
-            print(f"Unexpected Error when accessing or interacting with 'Confirm Address' button. {e}")
-            cleanup_driver(driver, exit=True)
+            print(f"!!! Unexpected Error when accessing or interacting with 'Confirm Address' button. {e}")
+            cleanup_driver(driver)
     
     
 
@@ -138,8 +147,8 @@ def handle_loc_prompt(driver, street, number):
         clickable_food_div = food_section_1.find_element(By.XPATH, './/div[@role="button"]')
         clickable_food_div.click()
     except Exception as e:
-        print(f"! Unexpected Error when triggering location popup to appear: {e}")
-        cleanup_driver(driver, exit=True)
+        print(f"!!! Unexpected Error when triggering location popup to appear: {e}")
+        cleanup_driver(driver)
     
     # Prompt should have appeared. Filling in the data...
     fill_loc_prompt(driver, street, number)
@@ -151,8 +160,8 @@ def handle_loc_prompt(driver, street, number):
         )
         close_button.click()
     except Exception as e:
-        print(f"Unexpected Error during access or interaction with close button of food item. {e}")
-        cleanup_driver(driver, exit=True)
+        print(f"!!! Unexpected Error during access or interaction with close button of food item. {e}")
+        cleanup_driver(driver)
 
     print("Entered address was accepted. Proceeding with data parsing.")
 
@@ -244,7 +253,7 @@ def extract_food_item_data(driver, category):
         return response
     
     except Exception as e:
-        print(f"Unexpected error when parsing <li>. {e}")
+        print(f"!!! Unexpected error when parsing <li>. {e}")
 
 
 
@@ -285,9 +294,9 @@ def main():
     street, number = get_restaurant_address(driver)
     handle_loc_prompt(driver, street, number)
     
-    handle_data_extraction(driver)
+    #handle_data_extraction(driver)
     
-    cleanup_driver(driver)
+    cleanup_driver(driver, quit=False)
     
     
 
