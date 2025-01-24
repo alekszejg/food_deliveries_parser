@@ -174,89 +174,97 @@ def parse_food_item(driver, category):
         "allergens": "", "price": "", "img_url": ""
     }
 
+    # Not sure if I 100% need element below, but it makes element search much more precise
+    div_item_details_card = None
+    try:
+        div_item_details_card = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-qa="item-details-card"]'))
+        ) 
+    except:
+        print("!!! Unexpected Error when locating <div data-qa='item-details-card'>")
+        cleanup_driver(driver)
+    
+    # extracting food item image src
+    try:
+        img = div_item_details_card.find_element(By.TAG_NAME, 'img')
+        response["img_url"] = img.get_attribute("src")
+    except Exception as e:
+        print(f"!!! Error: failed to find img element of food item and its src. {e}")
+        cleanup_driver(driver)
+    
+    print(f"Image: {response['img_url']}")
+
     # parsing food item's title/name
     try:
-        h2 = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.TAG_NAME, 'h2'))
-        )
+        h2 = div_item_details_card.find_element(By.TAG_NAME, 'h2')
         response["title"] = h2.text
-        print(f"Food: {response["title"]}")
     except:
         print("!!! Error: failed to access and parse <h2> title content of food item")
         cleanup_driver(driver)
+
+    print(f"Title: {response['title']}")
     
+
     # parsing food item's details
     try:
-        text_div = driver.find_element(By.CSS_SELECTOR, 'div[data-qa="text"]')
+        text_div = div_item_details_card.find_element(By.CSS_SELECTOR, 'div[data-qa="text"]')
         response["details"] = text_div.text
     except:
         print("Food item's description likely not provided")
-    
+
+    print(f"Details: {response['details']}")
+
     # parsing food item's allergens
     try:
-        info_button = driver.find_element(By.XPATH, '//fieldset//span[@role="button"]')
-        info_button.click()   
-    except:
-        print("fieldset wasnt found")
-        info_button = driver.find_element(By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]')
-        info_button.click()
-        
-    # if <h6> exists (header for allergens), so does the allergen info
-    h6 = None
-    try:
-        h6 = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.TAG_NAME, 'h6'))
+        product_info_button = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.XPATH,'//fieldset//span[@role="button"]'))
         )
+        product_info_button.click()   
     except:
-        print("Food item likely has no allergens")
-    
-    if h6:
+        print("Element <fieldset> not found, likely only 1 portion option avaible")
+        product_info_button = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//span[@data-qa="item-details-action-nutrition-element"]'))
+        )
+        product_info_button.click()
+   
+    # check if allergen section exists and only afterwards parse allergens
+    try:
+        allergen_section = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-qa="product-info-allergen-section"]'))
+        )
+        
         try:
-            allergen_list = driver.find_element(By.CSS_SELECTOR, 'ul[data-qa="util"]')
-            li_allergen_items = allergen_list.find_elements(By.TAG_NAME, 'li')
+            allergen_items = allergen_section.find_elements(By.XPATH, './/ul//li')                                              
             allergen_data = ""
-            
-            for li in li_allergen_items:
+            for li in allergen_items:
                 allergen_data += li.text + " "
             response["allergens"] = allergen_data.rstrip()
+            print(f"Allergens: {response['allergens']}")
 
         except:
-            print("food item likely has no allergens")
-            
+            print("Unexpected Error occured when finding <li> allergen items")
+            cleanup_driver(driver)
 
+    except:
+        print("Food item likely has no allergens.\n")
+    
+
+    # Returning back from Productinformation page        
     try:
-        return_back_button = WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located((By.XPATH,'//div[@data-qa="product-info-header"]//span[@data-qa="product-info-header-action-back"]'))
+        return_back_button = WebDriverWait(driver, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, 'span[data-qa="product-info-header-action-back"]'))
         )
-        print("Found return back button")
-        #return_back_button = driver.find_element(By.XPATH, '//div[@data-qa="product-info-header"]//span[@data-qa="product-info-header-action-back"]')
         return_back_button.click()
-        print("Clicked return back button")
     except Exception as e:
         print(f"!!! Unexpected Error when finding or interacting with 'return back' <span> button. {e}")
         cleanup_driver(driver)
             
-    # parsing food item's price
-    try:
-        price_span = WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//span[@data-qa="text"]//span'))
-        )
-        response["price"] = price_span.text
-    except:
-        print("!!! Error: failed to find <span> element with food item's price")
-        cleanup_driver(driver)
-
-    # extracting food item image src
-    try:
-        img = driver.find_element(By.TAG_NAME, 'img')
-        response["img_url"] = img.get_attribute("src")
-    except:
-        print("!!! Error: failed to find img element of food item and its src")
-        cleanup_driver(driver)
 
     # close food item page
     try:
-        close_button = driver.find_element(By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]')
+        close_button = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
+        )
         close_button.click()
     except Exception as e:
         print(f"!!! Error: failed to find or click <span> button to close food item's page. {e}")
