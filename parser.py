@@ -98,6 +98,7 @@ def get_restaurant_address(driver):
         cleanup_driver(driver)
     
     
+
 def fill_loc_prompt(driver, street, number):
     try:
         street_input = WebDriverWait(driver, 5).until(
@@ -144,7 +145,7 @@ def handle_loc_prompt(driver, street, number):
     # Triggers Lieferando's location prompt to appear by clicking 1st menu item
     try:
         food_section_1 = driver.find_element(By.CSS_SELECTOR, 'section[data-qa="item-category"]')
-        clickable_food_div = food_section_1.find_element(By.XPATH, './/div[@role="button"]')
+        clickable_food_div = food_section_1.find_element(By.CSS_SELECTOR, 'div[role="button"]')
         clickable_food_div.click()
     except Exception as e:
         print(f"!!! Unexpected Error when triggering location popup to appear: {e}")
@@ -156,7 +157,7 @@ def handle_loc_prompt(driver, street, number):
     # close food item card
     try:
         close_button = WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
+            EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
         )
         close_button.click()
     except Exception as e:
@@ -179,6 +180,7 @@ def parse_food_item(driver, category):
             EC.presence_of_element_located((By.TAG_NAME, 'h2'))
         )
         response["title"] = h2.text
+        print(f"Food: {response["title"]}")
     except:
         print("!!! Error: failed to access and parse <h2> title content of food item")
         cleanup_driver(driver)
@@ -192,12 +194,13 @@ def parse_food_item(driver, category):
     
     # parsing food item's allergens
     try:
-        info_button = driver.find_element(By.CSS_SELECTOR, 'span[aria-label="Weitere Produktinformationen"]')
+        info_button = driver.find_element(By.XPATH, '//fieldset//span[@role="button"]')
+        info_button.click()   
+    except:
+        print("fieldset wasnt found")
+        info_button = driver.find_element(By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]')
         info_button.click()
-    except Exception as e:
-        print(f"!!! Error: failed to access or click product info <span> button of food item. {e}")
-        cleanup_driver(driver)
-
+        
     # if <h6> exists (header for allergens), so does the allergen info
     h6 = None
     try:
@@ -217,13 +220,18 @@ def parse_food_item(driver, category):
                 allergen_data += li.text + " "
             response["allergens"] = allergen_data.rstrip()
 
-        except Exception as e:
-            print(f"!!! Unexpected Error when finding <ul> element for allergens or its children. {e}")
-            cleanup_driver(driver)
+        except:
+            print("food item likely has no allergens")
+            
 
     try:
-        return_back_button = driver.find_element(By.CSS_SELECTOR, 'span[aria-label="backButtonClick"]')
+        return_back_button = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located((By.XPATH,'//div[@data-qa="product-info-header"]//span[@data-qa="product-info-header-action-back"]'))
+        )
+        print("Found return back button")
+        #return_back_button = driver.find_element(By.XPATH, '//div[@data-qa="product-info-header"]//span[@data-qa="product-info-header-action-back"]')
         return_back_button.click()
+        print("Clicked return back button")
     except Exception as e:
         print(f"!!! Unexpected Error when finding or interacting with 'return back' <span> button. {e}")
         cleanup_driver(driver)
@@ -303,11 +311,10 @@ def main():
     
     street, number = get_restaurant_address(driver)
     handle_loc_prompt(driver, street, number)
+    time.sleep(5) # wait after closing location prompt
     
-    time.sleep(2) # wait after closing location prompt
     data = handle_parsing(driver)
-    print("\nParsed all data!:")
-    print(data)
+    print(f"\nParsed all data!:\n{data}")
     cleanup_driver(driver, quit=False)
     
     
