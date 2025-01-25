@@ -6,139 +6,211 @@ from driver_utils import terminate_driver
 from misc import print_exception_info
 
 
-class FoodItem:
-    def __init__(self, driver, food_category):
+class MenuItem:
+    def __init__(self, driver, food_category, element):
         self.driver = driver  
         self.food_category = food_category
-    
+        self.element = element
 
     def extract_data(self):
-        img_url = self.extract_image_url()
-        title = self.extract_title()
-        price = self.extract_price()
-        description = self.extract_description()
-        allergens = self.check_allergens()
+        # helps locate all data, except for allergens
+        div_item_details_card = self.get_div_item_details_card()
+        
+        title = self.extract_title(div_item_details_card) # if not found or error => terminate_driver()
+        print(f"Food name: {title}")
+        
+        price = self.extract_price() # if not found or error => terminate_driver()
+        img_url = self.extract_img_url(div_item_details_card)
+        description = self.extract_description(div_item_details_card)
+        allergens = self.extract_allergens()
        
         data = {
             "category": self.food_category, "title": title, "description": description, 
             "allergens": allergens, "price": price, "img_url": img_url
         }
-
-        # helps locate all data, except for allergens
-        details_wrapper = self.get_details_wrapper()
-        
         return data
     
-    def get_details_wrapper(self):
+
+    def get_div_item_details_card(self):
+        func_name = "self.get_div_item_details_card"
         try:
             item_details_wrapper= WebDriverWait(self.driver, 5).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-qa="item-details-card"]'))
             ) 
+            return item_details_wrapper
         except Exception as e:
             reason = "couldn't locate <div data-qa='item-details-card'> element"
             print_exception_info(func_name=func_name, reason=reason, e=e)
             terminate_driver(self.driver)
 
-    def extract_image_url(self):
-        try:
-            img = div_item_details_card.find_element(By.TAG_NAME, 'img')
-            response["img_url"] = img.get_attribute("src")
-        except Exception as e:
-            print(f"!!! Error: failed to find img element of food item and its src. {e}")
-            terminate_driver(driver)
-        print(f"Image: {response['img_url']}")
-    
 
-    def extract_title(self):
+    def extract_title(self, div_item_details_card):
+        func_name = "self.extract_title"
         try:
             h2 = div_item_details_card.find_element(By.TAG_NAME, 'h2')
-            response["title"] = h2.text
-        except:
-            print("!!! Error: failed to access and parse <h2> title content of food item")
-            terminate_driver(driver)
+            title = h2.text
+            return title
+        
+        except NoSuchElementException:
+            reason = "couldn't locate <h2> with title within <div data-qa='item-details-card'>"
+            print_exception_info(func_name=func_name, e_name="NoSuchElementException", reason=reason)
+            terminate_driver(self.driver)
 
-        print(f"Title: {response['title']}")
+        except Exception as e:
+            print_exception_info(func_name=func_name, e=e)
+            terminate_driver(self.driver)
 
-
+        
     def extract_price(self):
+        func_name = "self.extract_price"
         try:
-            price_span = WebDriverWait(driver, 5).until(
+            span = WebDriverWait(self.driver, 5).until(
                 EC.presence_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//span[@data-qa="text"]//span'))
             )
-            response["price"] = price_span.text
-        except:
-            print("!!! Error: failed to find <span> element with food item's price")
-            cleanup_driver(driver)
+            price = span.text
+            return price
         
-        print(f"Price: {response['price']}")
+        except NoSuchElementException:
+            reason = "couldn't locate <span> with price within path //<div data-qa='item-details-card'>//<span data-qa='text'>"
+            print_exception_info(func_name=func_name, e_name="NoSuchElementException", reason=reason)
+            terminate_driver(self.driver)
+
+        except Exception as e:
+            print_exception_info(func_name=func_name, e=e)
+            terminate_driver(self.driver)
+        
     
-
-    def extract_description(self):
+    def extract_img_url(self, div_item_details_card):
+        func_name = "extract_img_url"
         try:
-            text_div = div_item_details_card.find_element(By.CSS_SELECTOR, 'div[data-qa="text"]')
-            response["details"] = text_div.text
-        except:
-            print("Food item's description likely not provided")
-
-        print(f"Details: {response['details']}")
-
-    def check_allergens(self):
+            img = div_item_details_card.find_element(By.TAG_NAME, 'img')
+            url = img.get_attribute("src")
+            return url
         
-        def open_product_info(self):
-            try:
-                product_info_button = WebDriverWait(driver, 5).until(
-                    EC.visibility_of_element_located((By.XPATH,'//fieldset//span[@role="button"]'))
-                )
-                product_info_button.click()   
-            except:
-                print("Element <fieldset> not found, likely only 1 portion option avaible")
-                product_info_button = WebDriverWait(driver, 5).until(
-                    EC.visibility_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//span[@data-qa="item-details-action-nutrition-element"]'))
-                )
-                product_info_button.click()
+        except NoSuchElementException:
+            reason = "couldn't locate <img> element within <div data-qa='item-details-card'>. Image is likely missing"
+            print_exception_info(func_name=func_name, e_name="NoSuchElementException", reason=reason)
+           
+        except Exception as e:
+            print_exception_info(func_name=func_name, e=e)
+            terminate_driver(self.driver)
+        
+    
+    def extract_description(self, div_item_details_card):
+        func_name = "extract_description"
+        try:
+            div = div_item_details_card.find_element(By.CSS_SELECTOR, 'div[data-qa="text"]')
+            description = div.text
+            return description
+        
+        except NoSuchElementException:
+            reason = "couldn't locate <div data-qa='text'> element within <div data-qa='item-details-card'>. Description is likely missing"
+            print_exception_info(func_name=func_name, e_name="NoSuchElementException", reason=reason)
+           
+        except Exception as e:
+            print_exception_info(func_name=func_name, e=e)
+            terminate_driver(self.driver)
 
-        def extract_allergens(self):
-            # 1st check if allergens section is there, if not then no allergens
+
+    def extract_allergens(self):
+        
+        def open_product_info():
+            def locate_button(path):
+                try: 
+                    button = WebDriverWait(self.driver, 5).until(
+                        EC.visibility_of_element_located((By.XPATH, path))
+                    )
+                    button.click()
+                    return True
+                except:
+                    return False
+            
+            path_1 = '//fieldset//span[@role="button"]'
+            path_2 = '//div[@data-qa="item-details-card"]//span[@data-qa="item-details-action-nutrition-element"]'
+            
+            if not locate_button(path=path_1):
+                status = locate_button(path=path_2)
+
+                if not status:
+                    func_name = "locate_button() within open_product_info() in self.extract_allergens"
+                    reason = "unable to locate Productinfo button, tried all possible paths."
+                    print_exception_info(func_name=func_name, reason=reason)
+                    terminate_driver(self.driver)
+
+
+        def allergen_section_exist():
+            func_name = "allergen_section_exist() within self.extract_allergens"
             try:
-                allergen_section = WebDriverWait(driver, 5).until(
+                div = WebDriverWait(self.driver, 5).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-qa="product-info-allergen-section"]'))
                 )
-                
-                try:
-                    allergen_items = allergen_section.find_elements(By.XPATH, './/ul//li')                                              
-                    allergen_data = ""
-                    for li in allergen_items:
-                        allergen_data += li.text + " "
-                    response["allergens"] = allergen_data.rstrip()
-                    print(f"Allergens: {response['allergens']}")
-
-                except:
-                    print("Unexpected Error occured when finding <li> allergen items")
-                    terminate_driver(driver)
-
+                return (True, div)
             except:
-                print("Food item likely has no allergens.\n")
+                reason= "allergen section doesn't exist"
+                print_exception_info(func_name=func_name, reason=reason)
+                return (False, None)
             
-            def close_product_info(self):
-                try:
-                    return_back_button = WebDriverWait(driver, 5).until(
-                        EC.visibility_of_element_located((By.CSS_SELECTOR, 'span[data-qa="product-info-header-action-back"]'))
-                    )
-                    return_back_button.click()
-                except Exception as e:
-                    print(f"!!! Unexpected Error when finding or interacting with 'return back' <span> button. {e}")
-                    terminate_driver(driver)
-        
-        # goes back to main menu page
-        def self_close(self):
+
+        def parse_allergens(allergens_section_div):
+            func_name = "parse_allergens() within self.extract_allergens"
+         
             try:
-                close_button = WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
-                )
-                close_button.click()
+                data = ""
+                li_items = allergens_section_div.find_elements(By.XPATH, './/ul//li')                                              
+                for li in li_items:
+                    data += li.text + " "
+                data = data.rstrip()
+                return data
+            
             except Exception as e:
-                print(f"!!! Error: failed to find or click <span> button to close food item's page. {e}")
-                terminate_driver(driver)
+                print_exception_info(func_name=func_name, e=e)
+                terminate_driver(self.driver)
+
+
+        def close_product_info():
+            func_name = "close_product_info() within self.extract_allergens"
+            try:
+                button = WebDriverWait(self.driver, 5).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, 'span[data-qa="product-info-header-action-back"]'))
+                )
+                button.click()
+            except Exception as e:
+                print_exception_info(func_name=func_name, e=e)
+                terminate_driver(self.driver)
+
+
+        # execute all sub-processes 
+        data = None 
+        open_product_info()
+        status, allergens_section_div = allergen_section_exist()
+        if status:
+            data = parse_allergens(allergens_section_div)
+        close_product_info()
+        return data 
+
+
+    # Open item page or go back to main page
+    def open(self, element):
+        func_name = "self.open_item_page"
+        try:
+            element.click()
+        except Exception as e:
+            reason = "Failed to open item page"
+            print_exception_info(func_name=func_name, reason=reason, e=e)
+            terminate_driver(self.driver)
+
+
+    def close(self):
+        func_name = "self.close_item_page"
+        try:
+            close_button = WebDriverWait(self.driver, 5).until(
+                EC.presence_of_element_located((By.XPATH, '//div[@data-qa="item-details-card"]//span[@role="button"]'))
+            )
+            close_button.click()
+        except Exception as e:
+            reason = "Failed to close item page"
+            print_exception_info(func_name=func_name, reason=reason, e=e)
+            terminate_driver(self.driver)
 
 
 
@@ -147,11 +219,11 @@ def parse_food_sections(driver, food_sections):
     parsed_menu_items = []
     
     for section in food_sections:
-        # Finding food section/category name
+        food_section_name = None
         try:
             h2 = section.find_element(By.TAG_NAME, 'h2') 
-            food_category = h2.text
-            print(f"\nFood Category: '{food_category}'")
+            food_section_name = h2.text
+            print(f"\nFood Section: '{food_section_name}'")
         except Exception as e:
             reason = "failed to find or parse <h2> element containing next food category name"
             print_exception_info(func_name=func_name, reason=reason, e=e)
@@ -159,18 +231,19 @@ def parse_food_sections(driver, food_sections):
 
     
         # Finding and parsing all food items in section
-        food_items = None
+        menu_items = None
         try:
-            food_items = section.find_elements(By.CSS_SELECTOR, 'div[role="button"]')
-            for item in food_items:
-                item.click()
-                data_dict = parse_menu__section_item(driver, food_category)
-                parsed_menu_items.append(data_dict)
+            menu_items = section.find_elements(By.CSS_SELECTOR, 'div[role="button"]')
+            for item in menu_items:
+                menu_item = MenuItem(driver, food_section_name, item)
+                menu_item.open(item)
+                data = menu_item.extract_data()
+                parsed_menu_items.append(data)
+                menu_item.close()
         
         except Exception as e:
             print(f"!!! Unexpected Error when finding <section>'s food items or when clicking one of them. {e}")
             terminate_driver(driver)
-
 
 
 def parse_food_menu(driver):
@@ -178,8 +251,8 @@ def parse_food_menu(driver):
     
     try:
         food_sections = driver.find_elements(By.CSS_SELECTOR, 'section[data-qa="item-category"]')
-        data_list = parse_food_sections(driver, food_sections)
-        return data_list
+        data = parse_food_sections(driver, food_sections)
+        return data
     
     except Exception as e:
         reason = "failed to find all <section data-qa='item-category'> elements"
